@@ -1,82 +1,223 @@
-# DevOps Automation Project
+# CloudForge — End-to-End Infrastructure Automation & Deployment
 
-## Architecture
-```text
-Developer → GitHub Push → GitHub Actions CI
-GitHub Actions CI → Docker Hub (push image)
-GitHub Actions CI → Kubernetes (kubectl apply)
-Terraform → AWS VPC → Public Subnet (Bastion) + Private Subnets (K8s nodes)
-Ansible → via Bastion → K8s Master + Workers
-K8s Master + Workers → run devops-api pods
-Prometheus → scrapes /metrics from pods
-Grafana → visualizes Prometheus data
+![Infrastructure](https://img.shields.io/badge/Infrastructure-Terraform-7B42BC)
+![Config](https://img.shields.io/badge/Config-Ansible-EE0000)
+![Orchestration](https://img.shields.io/badge/Orchestration-Kubernetes-326CE5)
+![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF)
+![Cloud](https://img.shields.io/badge/Cloud-AWS-FF9900)
+
+A production-grade DevOps project demonstrating end-to-end infrastructure automation, configuration management, container orchestration, and CI/CD pipeline implementation on AWS.
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        AWS VPC                          │
+│                                                         │
+│  ┌──────────────┐         ┌─────────────────────────┐  │
+│  │ Public Subnet│         │    Private Subnet        │  │
+│  │              │         │                          │  │
+│  │  ┌─────────┐ │   SSH   │  ┌────────┐  ┌───────┐  │  │
+│  │  │ Bastion │─┼────────►│  │K8s     │  │K8s    │  │  │
+│  │  │  Host   │ │         │  │Master  │  │Worker │  │  │
+│  │  └─────────┘ │         │  └────────┘  └───────┘  │  │
+│  │  ┌─────────┐ │         │             ┌───────┐   │  │
+│  │  │   NAT   │ │         │             │K8s    │   │  │
+│  │  │ Gateway │ │         │             │Worker │   │  │
+│  │  └─────────┘ │         │             └───────┘   │  │
+│  └──────────────┘         └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Prerequisites
-| Tool | Version | Install command |
-|------|---------|-----------------|
-| Terraform | 1.5+ | `brew install terraform` |
-| Ansible | 2.14+ | `pip install ansible` |
-| kubectl | 1.28 | `brew install kubectl` |
-| AWS CLI | 2.x | `brew install awscli` |
-| Docker | 24+ | `brew install docker` |
-| Python | 3.8+ | `brew install python` |
-| Node.js | 18+ | `brew install node@18` |
-| Helm | 3.12+ | `brew install helm` |
-| jq | Latest | `brew install jq` |
-| gh | Latest | `brew install gh` |
+## Tech Stack
 
-## Quick Start
-1. **Clone repo and install prerequisites**
-2. **Configure AWS credentials**: `aws configure`
-3. **Generate SSH key**: `ssh-keygen -t rsa -b 4096 -f ~/.ssh/devops-key`
-4. **Create S3 bucket and DynamoDB table**:
-   ```bash
-   aws s3 mb s3://devops-tf-state-YOURACCOUNTID --region us-east-1
-   aws s3api put-bucket-versioning --bucket devops-tf-state-YOURACCOUNTID --versioning-configuration Status=Enabled
-   aws dynamodb create-table --table-name devops-tf-lock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
-   ```
-5. **Infrastructure**: `cd terraform && terraform init && terraform apply`
-6. **Inventory**: Update `ansible/inventory/hosts.ini` with terraform output values
-7. **Provision**: `make provision`
-8. **Build & Push**: `make build` (after updating image name)
-9. **Deploy**: `make deploy`
-10. **Verify**: `make check`
+| Layer | Technology |
+|---|---|
+| Cloud Provider | AWS (ap-south-1) |
+| Infrastructure as Code | Terraform |
+| Configuration Management | Ansible |
+| Container Orchestration | Kubernetes (kubeadm) |
+| Container Runtime | containerd |
+| CI/CD | GitHub Actions |
+| Containerization | Docker |
+| Image Registry | Docker Hub |
+| App Runtime | Node.js + Express |
 
-## Directory Structure
-| File/Directory | Purpose |
-|----------------|---------|
-| `Makefile` | Command shortcuts for project automation. |
-| `README.md` | Project documentation and architecture. |
-| `.github/workflows` | CI/CD pipeline definitions. |
-| `terraform/` | Infrastructure as Code for AWS. |
-| `ansible/` | Server configuration and K8s setup. |
-| `app/` | Node.js REST API source code. |
-| `kubernetes/` | K8s deployment manifests. |
-| `scripts/` | Validation and utility scripts. |
+---
 
-## GitHub Secrets Reference
-| Secret Name | Description | How to obtain |
-|-------------|-------------|---------------|
-| `AWS_ACCESS_KEY_ID` | AWS Access Key | IAM Console |
-| `AWS_SECRET_ACCESS_KEY` | AWS Secret Key | IAM Console |
-| `AWS_REGION` | AWS Region | `us-east-1` |
-| `DOCKERHUB_USERNAME` | Docker Hub Username | Docker Hub account |
-| `DOCKERHUB_TOKEN` | Docker Hub PAT | Docker Hub settings |
-| `KUBECONFIG_B64` | Base64 Kubeconfig | `cat ~/.kube/config | base64 -w 0` |
-| `SLACK_WEBHOOK_URL` | Slack Webhook | Slack App settings |
+## Project Structure
 
-## Troubleshooting
-1. **"Error: No valid credential sources found"** — Run `aws configure`.
-2. **"Error acquiring the state lock"** — Run `terraform force-unlock <ID>`.
-3. **"UNREACHABLE - Connection timed out"** — Check SG rules for Bastion and SSH key.
-4. **"[ERROR] failed to run Kubelet"** — Run `swapoff -a`.
-5. **"node NotReady"** — Check CNI installation with `kubectl get pods -n kube-system`.
-6. **"ImagePullBackOff"** — Check Docker Hub credentials in K8s.
-7. **"0/2 nodes are available: pod has unbound PersistentVolumeClaims"** — Ensure StorageClass is defined.
-8. **"deadline exceeded"** — Increase instance type for Master (t3.medium recommended).
+```
+CloudForge/
+├── terraform/
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── modules/
+│       ├── vpc/          # VPC, subnets, IGW, NAT, routing
+│       └── ec2/          # Bastion, K8s master, workers, SGs
+├── ansible/
+│   ├── inventory/
+│   │   └── hosts.ini
+│   ├── site.yml
+│   ├── group_vars/
+│   │   └── all.yml
+│   └── roles/
+│       ├── common/       # Base packages, kernel modules, sysctl
+│       ├── containerd/   # Container runtime setup
+│       ├── kubernetes/   # kubeadm, kubelet, kubectl
+│       ├── k8s_master/   # Cluster init, CNI plugin
+│       └── k8s_workers/  # Node join
+├── kubernetes/
+│   ├── namespace.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── configmap.yaml
+│   ├── hpa.yaml
+│   └── pdb.yaml
+├── app/
+│   ├── src/
+│   │   ├── index.js      # Express API
+│   │   └── index.test.js # Jest tests
+│   ├── Dockerfile
+│   └── package.json
+└── .github/
+    └── workflows/
+        ├── ci.yml        # CI pipeline
+        └── cd.yml        # CD pipeline
+```
 
-## Teardown
-1. `make destroy-k8s`
-2. `helm uninstall kube-prometheus-stack -n monitoring`
-3. `make destroy-infra`
+---
+
+## Infrastructure (Terraform)
+
+Terraform provisions the following AWS resources:
+
+- **VPC** with public and private subnets across 2 AZs
+- **Internet Gateway** for public subnet routing
+- **NAT Gateway** for private subnet outbound traffic
+- **Bastion Host** (t3.micro) in public subnet for SSH access
+- **Kubernetes Master** (t3.small) in private subnet
+- **2 Kubernetes Workers** (t3.micro) in private subnet
+- **Security Groups** with least-privilege rules
+
+### Deploy Infrastructure
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply -auto-approve
+```
+
+---
+
+## Configuration Management (Ansible)
+
+Ansible configures all nodes with:
+
+- System packages, kernel modules, sysctl params
+- Swap disabled (Kubernetes requirement)
+- containerd runtime with SystemdCgroup
+- kubeadm, kubelet, kubectl (v1.28)
+- Kubernetes cluster initialization (master)
+- Worker node join
+
+### Run Playbook
+```bash
+ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml
+```
+
+---
+
+## Kubernetes Cluster
+
+3-node cluster bootstrapped with kubeadm:
+
+```
+NAME             STATUS   ROLES           AGE    VERSION
+master           Ready    control-plane   -      v1.28.0
+ip-10-0-11-187   Ready    <none>          -      v1.28.0
+ip-10-0-11-7     Ready    <none>          -      v1.28.0
+```
+
+### Verify Cluster
+```bash
+kubectl get nodes
+kubectl get pods --all-namespaces
+```
+
+---
+
+## Application
+
+A RESTful Node.js/Express API with the following endpoints:
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| GET | /api/items | List all items |
+| POST | /api/items | Create item |
+| GET | /metrics | Prometheus metrics |
+
+---
+
+## CI/CD Pipeline (GitHub Actions)
+
+### CI Pipeline (`ci.yml`)
+Triggered on every push:
+
+1. **lint-and-test** — ESLint + Jest tests with coverage
+2. **security-scan** — npm audit + Trivy filesystem scan + Checkov IaC scan
+3. **docker-build-test** — Build Docker image + health check + Trivy image scan
+
+### CD Pipeline (`cd.yml`)
+Triggered on push to main:
+
+1. **build-and-push** — Build and push Docker image to Docker Hub
+2. **deploy-staging** — Apply Kubernetes manifests + rollout wait + smoke test
+3. **deploy-production** — Deploy to production + Slack notification
+
+---
+
+## GitHub Secrets Required
+
+| Secret | Description |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `DOCKERHUB_USERNAME` | Docker Hub username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token |
+| `KUBECONFIG_B64` | Base64 encoded kubeconfig |
+| `SLACK_WEBHOOK_URL` | Slack webhook for notifications |
+
+---
+
+## Results
+
+- ✅ CI Pipeline fully passing (lint, test, security, docker)
+- ✅ Docker image built and pushed to Docker Hub automatically
+- ✅ Kubernetes cluster running with 3 nodes
+- ✅ Application deployed and accessible via NodePort
+- ⚠️ CD deploy-staging requires self-hosted runner (GitHub-hosted runners cannot reach private VPC)
+
+---
+
+## Key Learnings
+
+- Terraform modular design for reusable infrastructure
+- Ansible idempotent configuration management
+- Kubernetes cluster bootstrapping with kubeadm
+- GPG key handling for apt repositories
+- SSH ProxyJump for bastion host tunneling
+- GitHub Actions secrets management
+- Docker multi-stage builds and security scanning
+
+---
+
+## Author
+
+**Pranav Chougale**  
+DevOps Engineer  
+GitHub: [@Pranavmc](https://github.com/Pranavmc)
