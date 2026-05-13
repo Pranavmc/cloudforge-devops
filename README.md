@@ -194,6 +194,36 @@ Triggered on push to main:
 
 ---
 
+## Screenshots
+
+### Repository & CI/CD
+
+![GitHub repository structure](screenshots/gitub%20repo%20structure.png)
+
+![GitHub Actions pipeline](screenshots/Github%20Actions.png)
+
+![Docker Hub repository](screenshots/Dockerhub%20Repo.png)
+
+### AWS Infrastructure
+
+![Terraform output](screenshots/terraform%20Output.png)
+
+![Project EC2 instances](screenshots/Project%20EC2%20Instances.png)
+
+![AWS VPCs](screenshots/VPCs.png)
+
+![AWS VPC subnets](screenshots/VPC%20Subnets.png)
+
+### Ansible & Kubernetes
+
+![Ansible playbook output](screenshots/Ansible%20playbook%20Output.png)
+
+![Kubernetes nodes](screenshots/Kubernetes%20Nodes.png)
+
+![Kubernetes namespaces and cluster info](screenshots/kubernetes%20namespaces%20and%20cluster%20info.png)
+
+---
+
 ## Results
 
 - ✅ CI Pipeline fully passing (lint, test, security, docker)
