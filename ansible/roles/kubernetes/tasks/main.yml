@@ -1,0 +1,53 @@
+---
+- name: Remove old Kubernetes repo files if exists
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/kubernetes.list
+    - /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  become: true
+
+- name: Download Kubernetes GPG key
+  shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  become: true
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Set permissions on Kubernetes GPG key
+  file:
+    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    mode: '0644'
+  become: true
+
+- name: Add Kubernetes apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /"
+  become: true
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  become: true
+
+- name: Install Kubernetes components
+  apt:
+    name:
+      - "kubelet={{ kubernetes_version_apt }}"
+      - "kubeadm={{ kubernetes_version_apt }}"
+      - "kubectl={{ kubernetes_version_apt }}"
+    state: present
+  become: true
+
+- name: Hold Kubernetes packages
+  shell: apt-mark hold kubelet kubeadm kubectl
+  become: true
+  changed_when: false
+
+- name: Enable kubelet service
+  systemd:
+    name: kubelet
+    enabled: yes
+  become: true

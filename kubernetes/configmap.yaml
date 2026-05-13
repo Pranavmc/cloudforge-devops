@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-api-config
+  namespace: devops-api
+  labels:
+    app: devops-api
+    version: v1
+    environment: production
+    managed-by: kubectl
+data:
+  NODE_ENV: production
+  PORT: "8080"
+  LOG_LEVEL: info

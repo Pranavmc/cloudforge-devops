@@ -1,0 +1,59 @@
+---
+- name: Check if cluster is already initialized
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: k8s_initialized
+
+- name: Run kubeadm init
+  command: >
+    kubeadm init
+    --pod-network-cidr={{ pod_network_cidr }}
+    --apiserver-advertise-address={{ ansible_default_ipv4.address }}
+    --node-name={{ inventory_hostname }}
+  become: true
+  when: not k8s_initialized.stat.exists
+
+- name: Create .kube directory for ubuntu user
+  file:
+    path: /home/ubuntu/.kube
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Copy admin.conf to ubuntu user's kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ubuntu/.kube/config
+    remote_src: yes
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
+  become: true
+
+- name: Apply Flannel CNI
+  command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+  become: false
+  changed_when: true
+
+- name: Generate join command
+  shell: kubeadm token create --print-join-command
+  register: join_command
+  become: true
+  changed_when: false
+
+- name: Save join command to /tmp/join_command.sh
+  copy:
+    content: "{{ join_command.stdout }}"
+    dest: /tmp/join_command.sh
+    mode: '0755'
+  become: true
+
+- name: Fetch join command to Ansible controller
+  fetch:
+    src: /tmp/join_command.sh
+    dest: "{{ playbook_dir }}/join_command.sh"
+    flat: yes
+  become: true

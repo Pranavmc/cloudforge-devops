@@ -1,0 +1,21 @@
+---
+- name: Check if worker already joined
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: worker_joined
+
+- name: Copy join_command.sh to workers
+  copy:
+    src: "{{ playbook_dir }}/join_command.sh"
+    dest: /tmp/join_command.sh
+    mode: '0755'
+  become: true
+
+- name: Run join command
+  command: bash /tmp/join_command.sh
+  become: true
+  when: not worker_joined.stat.exists
+
+- name: Wait for node to register
+  pause:
+    seconds: 30

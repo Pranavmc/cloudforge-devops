@@ -1,0 +1,77 @@
+# Required GitHub Secrets:
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+# AWS_REGION
+
+name: Terraform Workflow
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['terraform/**']
+
+jobs:
+  terraform-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform Format check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate terraform/
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan -no-color 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      - name: Post plan as PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/plan_output.txt', 'utf8');
+            const output = `#### Terraform Plan 📖 \`${{ steps.plan.outcome }}\`
+            
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`hcl
+            ${plan}
+            \`\`\`
+            
+            </details>
+            
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Upload tfplan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan

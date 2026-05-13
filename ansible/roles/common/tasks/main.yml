@@ -1,0 +1,116 @@
+---
+- name: Remove old Docker repository if exists
+  file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+  become: true
+
+- name: Remove old Kubernetes repository if exists
+  file:
+    path: /etc/apt/sources.list.d/kubernetes.list
+    state: absent
+  become: true
+
+- name: Remove old GPG keys if exists
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/keyrings/docker.gpg
+    - /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  become: true
+
+- name: Remove old Docker repository if exists
+  file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+  become: true
+
+- name: Remove old Docker GPG key if exists
+  file:
+    path: /etc/apt/keyrings/docker.gpg
+    state: absent
+  become: true
+
+- name: Set timezone to UTC
+  command: timedatectl set-timezone UTC
+  become: true
+  ignore_errors: yes
+
+- name: Update apt cache and upgrade all packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+  become: true
+
+- name: Install common packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - unzip
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - software-properties-common
+    state: present
+  become: true
+
+- name: Disable swap immediately
+  command: swapoff -a
+  become: true
+  changed_when: false
+
+- name: Remove swap from /etc/fstab
+  replace:
+    path: /etc/fstab
+    regexp: '.*swap.*'
+    replace: ''
+  become: true
+
+- name: Set vm.swappiness=0
+  sysctl:
+    name: vm.swappiness
+    value: '0'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+  become: true
+
+- name: Load kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  become: true
+
+- name: Make modules persistent
+  copy:
+    dest: /etc/modules-load.d/kubernetes.conf
+    content: |
+      overlay
+      br_netfilter
+  become: true
+
+- name: Set sysctl params for Kubernetes
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+  loop:
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+  become: true
+
+- name: Reload sysctl
+  command: sysctl --system
+  become: true
+  changed_when: false

@@ -1,0 +1,129 @@
+# Required GitHub Secrets:
+# DOCKERHUB_USERNAME
+# DOCKERHUB_TOKEN
+# KUBECONFIG_B64
+# SLACK_WEBHOOK_URL
+
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: app/
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/devops-api:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/devops-api:latest
+          push: true
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update image tag
+        run: |
+          sed -i "s|YOURDOCKERUSERNAME/devops-api:latest|${{ secrets.DOCKERHUB_USERNAME }}/devops-api:${{ github.sha }}|g" kubernetes/deployment.yaml
+
+      - name: Apply manifests
+        run: |
+          kubectl apply -f kubernetes/namespace.yaml
+          kubectl apply -f kubernetes/configmap.yaml
+          kubectl apply -f kubernetes/deployment.yaml
+          kubectl apply -f kubernetes/service.yaml
+          kubectl apply -f kubernetes/hpa.yaml
+          kubectl apply -f kubernetes/pdb.yaml
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/devops-api -n devops-api --timeout=300s
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/devops-api 8081:80 -n devops-api &
+          sleep 10
+          curl -f http://localhost:8081/health
+          kill %1
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update image tag
+        run: |
+          sed -i "s|YOURDOCKERUSERNAME/devops-api:latest|${{ secrets.DOCKERHUB_USERNAME }}/devops-api:${{ github.sha }}|g" kubernetes/deployment.yaml
+
+      - name: Apply manifests
+        run: |
+          kubectl apply -f kubernetes/namespace.yaml
+          kubectl apply -f kubernetes/configmap.yaml
+          kubectl apply -f kubernetes/deployment.yaml
+          kubectl apply -f kubernetes/service.yaml
+          kubectl apply -f kubernetes/hpa.yaml
+          kubectl apply -f kubernetes/pdb.yaml
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/devops-api -n devops-api --timeout=300s
+
+      - name: Slack notification on success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: '{"text":"✅ devops-api deployed to production. Commit: ${{ github.sha }}"}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Slack notification on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: '{"text":"❌ Production deploy FAILED for ${{ github.sha }}"}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,6 @@
+kubernetes_version: "1.28"
+kubernetes_version_apt: "1.28.0-1.1"
+pod_network_cidr: "10.244.0.0/16"
+containerd_version: "1.6.24"
+timezone: "UTC"
+ansible_python_interpreter: /usr/bin/python3

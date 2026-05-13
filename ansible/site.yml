@@ -1,0 +1,17 @@
+---
+- name: Configure K8s Nodes
+  hosts: k8s_all
+  roles:
+    - common
+    - containerd
+    - kubernetes
+
+- name: Initialize K8s Master
+  hosts: k8s_master
+  roles:
+    - k8s_master
+
+- name: Join K8s Workers
+  hosts: k8s_workers
+  roles:
+    - k8s_workers
